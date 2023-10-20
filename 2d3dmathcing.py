@@ -1,16 +1,19 @@
-from scipy.spatial.transform import Rotation as R
-import pandas as pd
-import numpy as np
+import re
 import cv2
-import time
+import numpy as np
+import pandas as pd
 
-images_df = pd.read_pickle("data/images.pkl")
-train_df = pd.read_pickle("data/train.pkl")
-points3D_df = pd.read_pickle("data/points3D.pkl")
-point_desc_df = pd.read_pickle("data/point_desc.pkl")
+from tqdm import tqdm
+from scipy.spatial.transform import Rotation
+
+from src.pnp import pnpsolver
+from src.visualize import Visualize3D
+from src.transform import convert_intrinsic_matrix_to_4d
+
 
 def average(x):
-    return list(np.mean(x,axis=0))
+    return list(np.mean(x, axis=0))
+
 
 def average_desc(train_df, points3D_df):
     train_df = train_df[["POINT_ID","XYZ","RGB","DESCRIPTORS"]]
@@ -20,54 +23,65 @@ def average_desc(train_df, points3D_df):
     desc = desc.join(points3D_df.set_index("POINT_ID"), on="POINT_ID")
     return desc
 
-def pnpsolver(query,model,cameraMatrix=0,distortion=0):
-    kp_query, desc_query = query
-    kp_model, desc_model = model
 
-    bf = cv2.BFMatcher()
-    matches = bf.knnMatch(desc_query,desc_model,k=2)
+def get_valid_id(df):
+    def get_id_from_name(name):
+        return int(re.search(r'valid_img(\d+).jpg', name).group(1))
 
-    gmatches = []
-    for m,n in matches:
-        if m.distance < 0.75*n.distance:
-            gmatches.append(m)
+    valid_df = df[df["NAME"].apply(lambda x: "valid" in x)]
+    valid_df["VALID_ID"] = valid_df["NAME"].apply(lambda x: get_id_from_name(x))
+    valid_df = valid_df.sort_values(by="VALID_ID")
+    return valid_df["IMAGE_ID"]
 
-    points2D = np.empty((0,2))
-    points3D = np.empty((0,3))
 
-    for mat in gmatches:
-        query_idx = mat.queryIdx
-        model_idx = mat.trainIdx
-        points2D = np.vstack((points2D,kp_query[query_idx]))
-        points3D = np.vstack((points3D,kp_model[model_idx]))
+if __name__ == "__main__":
+    images_df = pd.read_pickle("data/images.pkl")
+    train_df = pd.read_pickle("data/train.pkl")
+    points3D_df = pd.read_pickle("data/points3D.pkl")
+    point_desc_df = pd.read_pickle("data/point_desc.pkl")
 
-    cameraMatrix = np.array([[1868.27,0,540],[0,1869.18,960],[0,0,1]])    
-    distCoeffs = np.array([0.0847023,-0.192929,-0.000201144,-0.000725352])
+    # Process model descriptors
+    desc_df = average_desc(train_df, points3D_df)
+    kp_model = np.array(desc_df["XYZ"].to_list())
+    desc_model = np.array(desc_df["DESCRIPTORS"].to_list()).astype(np.float32)
 
-    return cv2.solvePnPRansac(points3D, points2D, cameraMatrix, distCoeffs)
+    point3D_loc = np.vstack(points3D_df['XYZ'].values)
+    point3D_color = np.vstack(points3D_df['RGB'].values) / 255
+    visualizer = Visualize3D(point3D_loc, point3D_color)
 
-# Process model descriptors
-desc_df = average_desc(train_df, points3D_df)
-kp_model = np.array(desc_df["XYZ"].to_list())
-desc_model = np.array(desc_df["DESCRIPTORS"].to_list()).astype(np.float32)
+    valid_ids = get_valid_id(images_df)
+    R_error_list = []
+    t_error_list = []
 
-# Load quaery image
-idx = 200
-fname = ((images_df.loc[images_df["IMAGE_ID"] == idx])["NAME"].values)[0]
-rimg = cv2.imread("data/frames/"+fname,cv2.IMREAD_GRAYSCALE)
+    for idx in tqdm(valid_ids):
+        # Load quaery image
+        fname = ((images_df.loc[images_df["IMAGE_ID"] == idx])["NAME"].values)[0]
+        rimg = cv2.imread("data/frames/" + fname, cv2.IMREAD_GRAYSCALE)
 
-# Load query keypoints and descriptors
-points = point_desc_df.loc[point_desc_df["IMAGE_ID"]==idx]
-kp_query = np.array(points["XY"].to_list())
-desc_query = np.array(points["DESCRIPTORS"].to_list()).astype(np.float32)
+        # Load query keypoints and descriptors
+        points = point_desc_df.loc[point_desc_df["IMAGE_ID"] == idx]
+        kp_query = np.array(points["XY"].to_list())
+        desc_query = np.array(points["DESCRIPTORS"].to_list()).astype(np.float32)
 
-# Find correspondance and solve pnp
-retval, rvec, tvec, inliers = pnpsolver((kp_query, desc_query),(kp_model, desc_model))
-rotq = R.from_rotvec(rvec.reshape(1,3)).as_quat()
-tvec = tvec.reshape(1,3)
+        # Find correspondance and solve pnp
+        R, t = pnpsolver((kp_query, desc_query), (kp_model, desc_model))
 
-# Get camera pose groudtruth 
-ground_truth = images_df.loc[images_df["IMAGE_ID"]==idx]
-rotq_gt = ground_truth[["QX","QY","QZ","QW"]].values
-tvec_gt = ground_truth[["TX","TY","TZ"]].values
+        # Get camera pose groudtruth 
+        ground_truth = images_df.loc[images_df["IMAGE_ID"] == idx]
+        rotq_gt = ground_truth[["QX","QY","QZ","QW"]].values
+        R_gt = Rotation.from_quat(rotq_gt[0]).as_matrix()
+        t_gt = ground_truth[["TX","TY","TZ"]].values.reshape(3, 1)
 
+        R_error = np.linalg.norm(Rotation.from_matrix(R @ R_gt.T).as_rotvec())
+        t_error = np.linalg.norm(t - t_gt)
+
+        R_error_list.append(R_error)
+        t_error_list.append(t_error)
+
+        M = convert_intrinsic_matrix_to_4d(R, t)
+        visualizer.add_pose(M)
+
+    print(f"Rotation Error: {np.median(R_error_list)}")
+    print(f"Translation Error: {np.median(t_error_list)}")
+
+    visualizer.draw_geometry()
