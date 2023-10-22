@@ -152,14 +152,6 @@ def images_to_video(image_list, save_path="video.mp4"):
     return
 
 
-def images_to_gif(image_list, save_path="temp.gif"):
-    for i, image in enumerate(image_list[:1500]):
-        image_list[i] = Image.fromarray(image_list[i])
-
-    image_list[0].save(save_path, save_all=True, append_images=image_list[1:])#, duration=250, loop=0, disposal=2)
-    return
-
-
 if __name__ == "__main__":
     # # vis = o3d.visualization.VisualizerWithKeyCallback()
     # # vis.create_window()
@@ -266,11 +258,5 @@ if __name__ == "__main__":
         for point, color in zip(all_points, point_colors):
             point2D = np.int_(camera_model.transform(point.reshape(1, 3)))[0]
             save_image_list.append(cv2.circle(image, point2D, 5, color, thickness=-1))
-    print("this")
 
-    del image_list
-    del R_list
-    del t_list
-
-    # images_to_video(save_image_list)
-    images_to_gif(save_image_list)
+    images_to_video(save_image_list)
