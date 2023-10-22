@@ -2,5 +2,3 @@
 # Homework2
 
 Dataset: [Download](https://drive.google.com/u/0/uc?export=download&confirm=qrVw&id=1GrCpYJFc8IZM_Uiisq6e8UxwVMFvr4AJ)
-
-![image](https://github.com/NTU-CSIE-3dcv-TA/homework2-jwliao1209/blob/main/demo/demo.gif)
