@@ -81,7 +81,7 @@ class DLTRANSAC:
         ransac_times=100,
         chosen_points_num=16,
         error_thres=15,
-        inliner_ratio_thres=0.5
+        inlier_ratio_thres=0.5,
     ):
         self.solver = DLT(cameraMatrix, distCoeffs)
         self.cameraMatrix = cameraMatrix
@@ -89,7 +89,7 @@ class DLTRANSAC:
         self.ransac_times = ransac_times
         self.chosen_points_num = chosen_points_num
         self.error_thres = error_thres
-        self.inliner_ratio_thres = inliner_ratio_thres
+        self.inlier_ratio_thres = inlier_ratio_thres
 
     def compute_points2D_target(self, points3D):
         points4D = expand_vector_dim(points3D)
@@ -97,24 +97,24 @@ class DLTRANSAC:
 
     def solve(self, points3D, points2D):
         best_error = np.Inf
-        best_inliners_num = 0
+        best_inliers_num = 0
 
         for _ in range(self.ransac_times):
-            chosen_idx = np.random.randint(points3D.shape[0], size=(self.chosen_points_num, ))
+            chosen_idx = np.random.choice(np.arange(points3D.shape[0]), size=(self.chosen_points_num, ), replace=False)
             R, t = self.solver.solve(points3D[chosen_idx], points2D[chosen_idx])
             self.intrinsicParamsMatrix = np.concatenate([R, t], axis=1)
 
             points2D_target = self.compute_points2D_target(points3D)
             errors = compute_points_error(points2D_target, points2D, mean=False)
-            inliner_index = np.where(errors < self.error_thres)[0]
-            inliner_num = inliner_index.shape[0]
-            inliner_ratio = inliner_num / points3D.shape[0]
+            inlier_index = np.where(errors < self.error_thres)[0]
+            inlier_num = inlier_index.shape[0]
+            inlier_ratio = inlier_num / points3D.shape[0]
             errors_mean = np.mean(errors)
 
-            if errors_mean < best_error and inliner_ratio > self.inliner_ratio_thres:
+            if errors_mean < best_error and inlier_ratio > self.inlier_ratio_thres:
                 best_error = errors_mean
-                best_inliners_num = inliner_num
+                best_inliers_num = inlier_num
                 best_R = R
                 best_t = t
 
-        return best_R, best_t, best_inliners_num
+        return best_R, best_t, best_inliers_num

@@ -16,12 +16,12 @@ class Visualize3D:
         # o3d.visualization.draw_geometries([pcd, camera])
 
     def add_pose(self, T):
-        T = np.linalg.inv(T)
+        T_inv = np.linalg.inv(T)
         frustum_lines, frustum_base = self.create_camera_frustum()
-        frustum_lines.transform(T)
-        frustum_base.transform(T)
+        frustum_lines.transform(T_inv)
+        frustum_base.transform(T_inv)
 
-        self.add_trajectory(T)
+        self.add_trajectory(T_inv)
         self.geometries_to_draw.append(frustum_lines)
         self.geometries_to_draw.append(frustum_base)
         return
@@ -32,11 +32,13 @@ class Visualize3D:
 
         # Base of the pyramid (square) - assuming camera looks along +Z and Y is up
         half_size = size / 2.0
-        points = [[0,0,0],
-                [half_size, half_size, size],
-                [-half_size, half_size, size],
-                [-half_size, -half_size, size],
-                [half_size, -half_size, size]]
+        points = [
+            [0,0,0],
+            [ half_size,  half_size, size],
+            [-half_size,  half_size, size],
+            [-half_size, -half_size, size],
+            [ half_size, -half_size, size]
+        ]
 
         # Create lines to represent the pyramid edges
         lines = [

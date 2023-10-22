@@ -27,8 +27,8 @@ def pnpsolver(query, model):
         points2D = np.vstack((points2D,kp_query[query_idx]))
         points3D = np.vstack((points3D,kp_model[model_idx]))
 
-    cameraMatrix = np.array([[1868.27,0,540],[0,1869.18,960],[0,0,1]])
-    distCoeffs = np.array([0.0847023,-0.192929,-0.000201144,-0.000725352])
+    cameraMatrix = np.array([[1868.27, 0, 540], [0, 1869.18, 960], [0, 0, 1]])
+    distCoeffs = np.array([0.0847023, -0.192929, -0.000201144, -0.000725352])
     # return cv2.solvePnPRansac(points3D, points2D, cameraMatrix, distCoeffs)
     
     dlt_ransac = DLTRANSAC(cameraMatrix, distCoeffs)
