@@ -12,9 +12,6 @@ class Visualize3D:
         self.geometries_to_draw = []
         self.geometries_to_draw.append(pcd)
 
-        # o3d.io.write_point_cloud("output.ply", pcd)
-        # o3d.visualization.draw_geometries([pcd, camera])
-
     def add_pose(self, T):
         T_inv = np.linalg.inv(T)
         frustum_lines, frustum_base = self.create_camera_frustum()
@@ -27,20 +24,15 @@ class Visualize3D:
         return
 
     def create_camera_frustum(self, size=0.5):
-        # Define the pyramid's 5 vertices
-        # Apex of the pyramid
-
-        # Base of the pyramid (square) - assuming camera looks along +Z and Y is up
         half_size = size / 2.0
         points = [
-            [0,0,0],
+            [         0,          0,    0],
             [ half_size,  half_size, size],
             [-half_size,  half_size, size],
             [-half_size, -half_size, size],
             [ half_size, -half_size, size]
         ]
 
-        # Create lines to represent the pyramid edges
         lines = [
             [0, 1],
             [0, 2],
@@ -48,13 +40,10 @@ class Visualize3D:
             [0, 4]
         ]
 
-        # Convert lines to open3d LineSet
         line_set = o3d.geometry.LineSet()
         line_set.points = o3d.utility.Vector3dVector(points)
         line_set.lines = o3d.utility.Vector2iVector(lines)
 
-        # Create a triangle mesh for the blue bottom
-        # Split the quadrilateral into two triangles
         triangles = [
             [1, 2, 3],
             [1, 3, 0],
@@ -72,7 +61,7 @@ class Visualize3D:
         triangle_mesh = o3d.geometry.TriangleMesh()
         triangle_mesh.vertices = o3d.utility.Vector3dVector(base)
         triangle_mesh.triangles = o3d.utility.Vector3iVector(triangles)
-        triangle_mesh.vertex_colors = o3d.utility.Vector3dVector([[0, 0, 1] for _ in base])  # Blue color
+        triangle_mesh.vertex_colors = o3d.utility.Vector3dVector([[0, 0, 1] for _ in base])
         return line_set, triangle_mesh
 
     def add_trajectory(self, T_inv):
@@ -83,9 +72,9 @@ class Visualize3D:
     def construct_trajectory(self):
         line_set = o3d.geometry.LineSet()
         line_set.points = o3d.utility.Vector3dVector(self.trajectory_points)
-        lines = np.array([[i, i+1]for i in range(len(self.trajectory_points)-1)])
+        lines = np.array([[i, i + 1]for i in range(len(self.trajectory_points)-1)])
         line_set.lines = o3d.utility.Vector2iVector(lines)
-        line_set.colors = o3d.utility.Vector3dVector(np.tile([0, 1, 0], (lines.shape[0], 1)))  # RGB values for green
+        line_set.colors = o3d.utility.Vector3dVector(np.tile([0, 1, 0], (lines.shape[0], 1)))
         self.geometries_to_draw.append(line_set)
         return
 

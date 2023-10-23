@@ -1,11 +1,11 @@
 import cv2
 import numpy as np
 
-from src.transform import DLTRANSAC
+from src.transform import DLTRANSAC, P3PRANSAC
 from src.constants import CAMERA_MATRIX, DIST_COEFFS
 
 
-def pnpsolver(query, model):
+def pnpsolver(query, model, method):
     kp_query, desc_query = query
     kp_model, desc_model = model
 
@@ -30,7 +30,13 @@ def pnpsolver(query, model):
         points3D = np.vstack((points3D,kp_model[model_idx]))
 
     # return cv2.solvePnPRansac(points3D, points2D, cameraMatrix, distCoeffs)
+    
+    if method == "dlt":
+        pnp_ransac = DLTRANSAC(CAMERA_MATRIX, DIST_COEFFS)
+    
+    elif method == "p3p":
+        pnp_ransac = P3PRANSAC(CAMERA_MATRIX, DIST_COEFFS)
 
-    dlt_ransac = DLTRANSAC(CAMERA_MATRIX, DIST_COEFFS)
-    R, t, _ = dlt_ransac.solve(points3D, points2D)
+    R, t, _ = pnp_ransac.solve(points3D, points2D)
+
     return R, t

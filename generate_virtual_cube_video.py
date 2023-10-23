@@ -1,5 +1,6 @@
 import os
 import cv2
+import argparse
 import numpy as np
 import pandas as pd
 
@@ -12,8 +13,16 @@ from src.constants import CAMERA_MATRIX
 from src.utils import set_random_seeds, average_desc, get_valid_id, images_to_video
 
 
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--method", type=str, default="dlt",
+                        help="method of PnP")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
     set_random_seeds()
+    args = parse_arguments()
     images_df = pd.read_pickle(os.path.join("data", "images.pkl"))
     train_df = pd.read_pickle(os.path.join("data", "train.pkl"))
     points3D_df = pd.read_pickle(os.path.join("data", "points3D.pkl"))
@@ -39,7 +48,7 @@ if __name__ == "__main__":
         desc_query = np.array(points["DESCRIPTORS"].to_list()).astype(np.float32)
 
         # Find correspondance and solve pnp
-        R, t = pnpsolver((kp_query, desc_query), (kp_model, desc_model))
+        R, t = pnpsolver((kp_query, desc_query), (kp_model, desc_model), method=args.method)
 
         image_list.append(rimg)
         R_list.append(R)

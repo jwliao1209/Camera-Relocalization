@@ -1,6 +1,11 @@
 import cv2
 import numpy as np
+from src.p3p import P3P
 from src.error import compute_points_error
+
+
+def translate_vector(point, vector):
+    return point.T - vector.reshape((3, 1))
 
 
 def expand_vector_dim(points):
@@ -38,9 +43,9 @@ class CameraModel:
 
 
 class DLT:
-    def __init__(self, camera_matrix, distCoeffs):
+    def __init__(self, camera_matrix, dist_coeffs):
         self.camera_matrix = camera_matrix
-        self.distCoeffs = distCoeffs
+        self.dist_coeffs = dist_coeffs
 
     def compute_one_point_sub_matrix(self, x, y, z, u, v):
         """
@@ -64,7 +69,7 @@ class DLT:
         )
 
     def solve(self, points3D, points2D):
-        points2D = cv2.undistortImagePoints(points2D, self.camera_matrix, self.distCoeffs).reshape(points2D.shape[0], 2)
+        points2D = cv2.undistortImagePoints(points2D, self.camera_matrix, self.dist_coeffs).reshape(points2D.shape[0], 2)
 
         # Solve Ax = 0 using SVD
         A = np.vstack(
@@ -130,3 +135,54 @@ class DLTRANSAC:
                 best_t = t
 
         return best_R, best_t, best_inliers_num
+
+
+class P3PRANSAC:
+    def __init__(
+        self,
+        camera_matrix,
+        dist_coeffs,
+    ):
+        self.solver = P3P(camera_matrix, dist_coeffs)
+        self.camera_matrix = camera_matrix
+        self.dist_coeffs = dist_coeffs
+        self.chosen_points_num = 3
+    
+    def get_ransac_times(self):
+        prob = 0.99
+        error_rate = 0.4
+        valid_num = 3
+        return int(np.ceil(np.log(1 - prob) / np.log(1 - (1 - error_rate) ** (valid_num + 3))))
+
+    def solve(self, points3D, points2D):
+        from src.constants import CAMERA_MATRIX, DIST_COEFFS
+
+        points2D = cv2.undistortPoints(points2D, CAMERA_MATRIX, DIST_COEFFS)[:, 0]
+
+        n_ransec_time = self.get_ransac_times()
+        n_inlier = 0
+
+        for i in range(n_ransec_time):
+            chosen_idx = np.random.choice(np.arange(points3D.shape[0]), size=(self.chosen_points_num, ), replace=False)
+            idx_unsample = np.full(points2D.shape[0], True)
+            idx_unsample[chosen_idx] = False
+            check_X = np.array([points3D[idx_unsample][0]])
+            check_V = np.array([points2D[idx_unsample][0]])
+
+            R, t = self.solver.solve(points3D[chosen_idx], points2D[chosen_idx], check_V, check_X)
+
+            if R is None:
+                continue
+
+            v_unsample = expand_vector_dim(points2D)
+            X_T_unsample = translate_vector(points3D, t)
+            lambda_v = R @ X_T_unsample
+            dist = lambda_v / v_unsample.T
+            dist = (dist.max(axis = 0) - dist.min(axis = 0)) / dist.max(axis = 0)
+            epsilon = 0.1
+            if dist[dist < epsilon].shape[0] > n_inlier:
+                n_inlier = dist[dist < epsilon].shape[0]
+                best_R = R
+                best_t = t
+
+        return best_R, -best_R @ best_t, n_inlier
