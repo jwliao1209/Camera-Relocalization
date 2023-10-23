@@ -2,3 +2,14 @@
 # Homework2
 
 Dataset: [Download](https://drive.google.com/u/0/uc?export=download&confirm=qrVw&id=1GrCpYJFc8IZM_Uiisq6e8UxwVMFvr4AJ)
+
+
+## Problem 1
+```
+python 2d3dmathcing.py
+```
+
+## Problem 2
+```
+python generate_virtual_cube_video.py
+```

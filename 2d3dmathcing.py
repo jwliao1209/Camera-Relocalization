@@ -1,3 +1,4 @@
+import os
 import cv2
 import numpy as np
 import pandas as pd
@@ -8,14 +9,15 @@ from scipy.spatial.transform import Rotation
 from src.pnp import pnpsolver
 from src.visualize import Visualize3D
 from src.transform import convert_intrinsic_matrix_to_4d
-from src.utils import average_desc, get_valid_id
+from src.utils import set_random_seeds, average_desc, get_valid_id
 
 
 if __name__ == "__main__":
-    images_df = pd.read_pickle("data/images.pkl")
-    train_df = pd.read_pickle("data/train.pkl")
-    points3D_df = pd.read_pickle("data/points3D.pkl")
-    point_desc_df = pd.read_pickle("data/point_desc.pkl")
+    set_random_seeds()
+    images_df = pd.read_pickle(os.path.join("data", "images.pkl"))
+    train_df = pd.read_pickle(os.path.join("data", "train.pkl"))
+    points3D_df = pd.read_pickle(os.path.join("data", "points3D.pkl"))
+    point_desc_df = pd.read_pickle(os.path.join("data", "point_desc.pkl"))
 
     # Process model descriptors
     desc_df = average_desc(train_df, points3D_df)
