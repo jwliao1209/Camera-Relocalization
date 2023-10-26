@@ -1,10 +1,15 @@
 import cv2
 import numpy as np
 from src.error import compute_points_error
-from src.transform import expand_vector_dim, unitize_vector, cos_theta, translate_vector
+from src.transform import expand_vector_dim, unitize_vector, cos_theta, translate_vector, CameraModel
+from src.ransac import RANSAC
 
 
 class P3P:
+    '''
+    Suppose the system is lambda_i * u_i = K @ R @ [I -T] X_i, i = 1, 2, 3
+    (It's equivalence to lambda_i * u_i = K @ [R -RT] X_i)
+    '''
     def __init__(self, camera_matrix, dist_coeffs):
         self.camera_matrix = camera_matrix
         self.dist_coeffs = dist_coeffs
@@ -41,7 +46,10 @@ class P3P:
         return np.isclose(np.abs(np.linalg.det(M)), 1, atol=1e-3)
 
     def solve(self, points3D, points2D):
+        points2D = cv2.undistortImagePoints(points2D, self.camera_matrix, self.dist_coeffs).reshape(points2D.shape[0], 2)
         points2D = expand_vector_dim(points2D)
+        points2D = (np.linalg.inv(self.camera_matrix) @ points2D.T).T
+        
         points2D, v_check = points2D[:3], points2D[-1]
         points3D, x_check = points3D[:3], points3D[-1]
 
@@ -51,7 +59,7 @@ class P3P:
         Rbc = np.linalg.norm(points3D[1] - points3D[2])
 
         if np.abs(Rac) < 1e-6 or np.abs(Rab) < 1e-6:
-            return None
+            return None, None
 
         Cab = cos_theta(points2D[0], points2D[1])
         Cac = cos_theta(points2D[0], points2D[2])
@@ -105,10 +113,7 @@ class P3P:
                 lambdas = sign * np.linalg.norm(X_minus_T, axis=1) / np.linalg.norm(points2D, axis=1)
 
                 # 6. Compute R by lambda * v_i = R (x_i - T)
-                if np.linalg.det(X_minus_T) < 1e-5:
-                    continue
-                else:
-                    R = (lambdas * points2D.T) @ np.linalg.inv(X_minus_T.T)
+                R = (lambdas * points2D.T) @ np.linalg.pinv(X_minus_T.T)
 
                 # Check R is orthogonal
                 if not self.check_orthogonal(R):
@@ -116,63 +121,32 @@ class P3P:
 
                 # Check (x, v) satisfied P3P equation 
                 v_pred = (R @ translate_vector(x_check, T).T).T
+                v_pred = v_pred / v_pred[:, -1]
 
-                for lambda_i in lambdas:
-                    error = compute_points_error(v_pred, lambda_i * v_check)
+                error = compute_points_error(v_pred, v_check)
+                if error < best_error:
+                    best_error = error
+                    best_R = R
+                    best_T = T.reshape(3, 1)
 
-                    if error < best_error:
-                        best_error = error
-                        best_R = R
-                        best_T = T.reshape(3, 1)
-
-        return best_R, best_T
+        return best_R, -best_R @ best_T if best_T is not None else None
 
 
-class P3PRANSAC:
+class P3PRANSAC(RANSAC):
     def __init__(
         self,
         camera_matrix,
         dist_coeffs,
         ransac_times=20,
-        error_thres=0.1,
+        error_thres=15,
+        inlier_ratio_thres=0.5,
     ):
+        super().__init__(
+            camera_matrix=camera_matrix,
+            dist_coeffs=dist_coeffs,
+            ransac_times=ransac_times,
+            chosen_points_num=4,
+            error_thres=error_thres,
+            inlier_ratio_thres=inlier_ratio_thres,
+        )
         self.solver = P3P(camera_matrix, dist_coeffs)
-        self.camera_matrix = camera_matrix
-        self.dist_coeffs = dist_coeffs
-        self.ransac_times = ransac_times
-        self.error_thres = error_thres
-        self.chosen_points_num = 4
-
-    def solve(self, points3D, points2D):
-        '''
-        Suppose the system is lambda_i * u_i = K @ R @ [I -T] X_i, i = 1, 2, 3
-        (It's equivalence to lambda_i * u_i = K @ [R -RT] X_i)
-        '''
-        best_inliers_num = 0
-        points2D = cv2.undistortPoints(points2D, self.camera_matrix, self.dist_coeffs).reshape(points2D.shape[0], 2)
-
-        for _ in range(self.ransac_times):
-            chosen_idx = np.random.choice(np.arange(points3D.shape[0]), size=(self.chosen_points_num, ), replace=False)
-            R, T = self.solver.solve(points3D[chosen_idx], points2D[chosen_idx])
-
-            if R is None:
-                continue
-
-            V = expand_vector_dim(points2D)
-            X_minus_T = translate_vector(points3D, T)
-            lambda_times_V = (R @ X_minus_T.T).T
-
-            scale_factors = lambda_times_V / V
-            scale_factor_max = scale_factors.max(axis=1)
-            scale_factor_min = scale_factors.min(axis=1)
-            scale_factor_error = (scale_factor_max - scale_factor_min) / scale_factor_max
-            
-            inlier_index = np.where(scale_factor_error < self.error_thres)[0]
-            inlier_num = inlier_index.shape[0]
-
-            if inlier_num > best_inliers_num:
-                best_inliers_num = inlier_num
-                best_R = R
-                best_T = T
-
-        return best_R, -best_R @ best_T, best_inliers_num
